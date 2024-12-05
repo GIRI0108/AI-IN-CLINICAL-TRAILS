@@ -1,0 +1,162 @@
+from flask import Flask, render_template, request, redirect, url_for
+import sqlite3
+
+app = Flask(__name__)
+
+# Database setup for patients and medicines
+a = 'patients.db'
+b = 'medicines.db'
+
+def init_patient_db():
+    conn = sqlite3.connect(a)
+    cursor = conn.cursor()
+    cursor.execute('''CREATE TABLE IF NOT EXISTS patients (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        name TEXT,
+                        age INTEGER,
+                        condition TEXT,
+                        blood_group TEXT,
+                        other_details TEXT)''')
+    conn.commit()
+    conn.close()
+
+def init_medicine_db():
+    conn = sqlite3.connect(b)
+    cursor = conn.cursor()
+    cursor.execute('''CREATE TABLE IF NOT EXISTS medicines (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        name TEXT,
+                        target_condition TEXT,
+                        description TEXT,
+                        phase TEXT)''')
+    conn.commit()
+    conn.close()
+
+# Initialize databases
+init_patient_db()
+init_medicine_db()
+
+@app.route('/')
+def home():
+    return render_template('index.html')
+
+@app.route('/display_patients')
+def display_patients():
+    conn = sqlite3.connect(a)
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM patients')
+    patients = cursor.fetchall()
+    conn.close()
+    return render_template('display_patients.html', patients=patients)
+
+@app.route('/add_patient', methods=['GET', 'POST'])
+def add_patient():
+    if request.method == 'POST':
+        name = request.form['name']
+        age = request.form['age']
+        condition = request.form['condition']
+        blood_group = request.form['blood_group']
+        other_details = request.form['other_details']
+        
+        conn = sqlite3.connect(a)
+        cursor = conn.cursor()
+        cursor.execute('''INSERT INTO patients (name, age, condition, blood_group, other_details)
+                          VALUES (?, ?, ?, ?, ?)''', (name, age, condition, blood_group, other_details))
+        conn.commit()
+        conn.close()
+        return redirect(url_for('home'))
+    
+    return render_template('add_patient.html')
+
+@app.route('/display_medicines')
+def display_medicines():
+    conn = sqlite3.connect(b)
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM medicines')
+    medicines = cursor.fetchall()
+    conn.close()
+    return render_template('display_medicines.html', medicines=medicines)
+
+@app.route('/add_medicine', methods=['GET', 'POST'])
+def add_medicine():
+    if request.method == 'POST':
+        name = request.form['name']
+        target_condition = request.form['target_condition']
+        description = request.form['description']
+        phase = request.form['phase']
+        
+        conn = sqlite3.connect(b)
+        cursor = conn.cursor()
+        cursor.execute('''INSERT INTO medicines (name, target_condition, description, phase)
+                          VALUES (?, ?, ?, ?)''', (name, target_condition, description, phase))
+        conn.commit()
+        conn.close()
+        return redirect(url_for('home'))
+    
+    return render_template('add_medicine.html')
+
+@app.route('/analyze_medicine', methods=['GET', 'POST'])
+def analyze_medicine():
+    # Fetch all patients and medicines from the databases
+    conn = sqlite3.connect(a)
+    patient_cursor = conn.cursor()
+    patient_cursor.execute('SELECT * FROM patients')
+    patients = patient_cursor.fetchall()
+    conn.close()
+    
+    conn = sqlite3.connect(b)
+    medicine_cursor = conn.cursor()
+    medicine_cursor.execute('SELECT * FROM medicines')
+    medicines = medicine_cursor.fetchall()
+    conn.close()
+
+    if request.method == 'POST':
+        selected_patient_id = request.form['patient_id']
+        selected_medicine_id = request.form['medicine_id']
+        
+        # Get selected patient details
+        conn = sqlite3.connect(a)
+        patient_cursor = conn.cursor()
+        patient_cursor.execute('SELECT * FROM patients WHERE id=?', (selected_patient_id,))
+        patient = patient_cursor.fetchone()
+        conn.close()
+        
+        # Get selected medicine details
+        conn = sqlite3.connect(b)
+        medicine_cursor = conn.cursor()
+        medicine_cursor.execute('SELECT * FROM medicines WHERE id=?', (selected_medicine_id,))
+        medicine = medicine_cursor.fetchone()
+        conn.close()
+        
+        # Perform the analysis based on patient condition and medicine target condition
+        analysis_result = perform_analysis(patient, medicine)
+        
+        return render_template('analyze_result.html', patient=patient, medicine=medicine, result=analysis_result)
+    
+    return render_template('analyze_medicine.html', patients=patients, medicines=medicines)
+
+def perform_analysis(patient, medicine):
+    # Extract patient and medicine data for comparison
+    patient_condition = patient[3]  # Assuming condition is the 4th column in the patients table
+    target_condition = medicine[2]  # Assuming target_condition is the 3rd column in the medicines table
+    
+    # Simple analysis: check if the target condition matches the patient's condition
+    if patient_condition.lower() == target_condition.lower():
+        return {
+            "success": True,
+            "message": f"The medicine '{medicine[1]}' matches the patient's condition '{patient_condition}'.",
+            "success_rate": 100  # For simplicity, it's 100% if it matches
+        }
+    else:
+        return {
+            "success": False,
+            "message": f"The medicine '{medicine[1]}' does not match the patient's condition '{patient_condition}'.",
+            "success_rate": 0  # 0% if it doesn't match
+        }
+
+@app.route('/exit')
+def exit_app():
+    return "Exiting the application. Goodbye!"
+
+if __name__ == '__main__':
+    app.run(debug=True)
